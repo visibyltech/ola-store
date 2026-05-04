@@ -10,7 +10,7 @@ const EasyBuy = () => {
   const steps = [
     { icon: "1", title: "Choose Your Product", desc: "Browse our catalog and pick the appliance you need." },
     { icon: "2", title: "Select EasyBuy", desc: "Choose the installment option and set your deposit amount." },
-    { icon: "3", title: "Pay Your Deposit", desc: "Make the initial payment via Paystack or Flutterwave." },
+    { icon: "3", title: "Pay Your Deposit", desc: "Make the initial payment securely via KoraPay." },
     { icon: "4", title: "Complete Payments", desc: "Pay monthly installments and get your product upon completion." },
   ];
 
