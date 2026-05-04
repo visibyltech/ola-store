@@ -46,7 +46,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
         const amount = type === "full_payment" ? product.price : depositAmount;
         const callbackUrl = `${window.location.origin}/payment/callback?gateway=korapay`;
 
-        const { data, error } = await supabase.functions.invoke("initialize-payment", {
+        const { data, error } = await supabase.functions.invoke("initialize-kora-payment", {
           body: {
             gateway: "korapay",
             amount,
