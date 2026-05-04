@@ -44,13 +44,12 @@ import { useParams, Link, useNavigate } from "react-router-dom";
       setLoadingPayment(true);
       try {
         const amount = type === "full_payment" ? product.price : depositAmount;
-        const callbackUrl = `${window.location.origin}/payment/callback?gateway=korapay`;
 
-        const { data, error } = await supabase.functions.invoke("initialize-kora-payment", {
-          body: {
-            gateway: "korapay",
-            amount,
-            email: user.email,
+        // Step 1: Create order in DB
+        const { data: order, error: orderError } = await supabase
+          .from("orders")
+          .insert({
+            user_id: user.id,
             product_id: product.id,
             product_name: product.name,
             product_price: product.price,
@@ -59,15 +58,35 @@ import { useParams, Link, useNavigate } from "react-router-dom";
             interest_rate: type === "deposit" ? installment.interestRate : 0,
             total_payable: type === "deposit" ? installment.totalPayable : product.price,
             remaining_balance: type === "deposit" ? installment.balance : 0,
+            total_paid: 0,
             installment_months: type === "deposit" ? product.maxInstallmentMonths : 0,
-            callback_url: `${callbackUrl}&order_id=${encodeURIComponent("PENDING")}`,
+            status: "pending",
+          })
+          .select()
+          .single();
+
+        if (orderError || !order) {
+          throw new Error(orderError?.message || "Failed to create order");
+        }
+
+        // Step 2: Initialize KoraPay payment via Edge Function
+        const redirectUrl = `${window.location.origin}/payment/callback?order_id=${order.id}`;
+
+        const { data, error } = await supabase.functions.invoke("initialize-kora-payment", {
+          body: {
+            order_id: order.id,
+            amount,
+            customer_email: user.email,
+            customer_name: user.user_metadata?.full_name || user.email,
+            redirect_url: redirectUrl,
           },
         });
 
-        if (error) throw error;
+        if (error) throw new Error(error.message || "Payment init failed");
 
-        if (data?.payment_url) {
-          window.location.href = data.payment_url;
+        const url = data?.checkout_url || data?.payment_url;
+        if (url) {
+          window.location.href = url;
         } else {
           throw new Error("No payment URL received");
         }
@@ -89,68 +108,44 @@ import { useParams, Link, useNavigate } from "react-router-dom";
             </Link>
 
             <div className="grid lg:grid-cols-2 gap-12">
-              {/* Image */}
               <motion.div
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="bg-secondary/50 rounded-3xl p-8 lg:p-12 aspect-square flex items-center justify-center"
               >
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="max-w-full max-h-full object-contain"
-                  width={800}
-                  height={800}
-                />
+                <img src={product.image} alt={product.name} className="max-w-full max-h-full object-contain" width={800} height={800} />
               </motion.div>
 
-              {/* Details */}
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-              >
+              <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}>
                 <span className="inline-block px-3 py-1 bg-accent/10 text-accent text-sm font-medium rounded-full mb-4">
                   {product.brand}
                 </span>
-                <h1 className="text-3xl lg:text-4xl font-display font-bold text-foreground mb-4">
-                  {product.name}
-                </h1>
+                <h1 className="text-3xl lg:text-4xl font-display font-bold text-foreground mb-4">{product.name}</h1>
                 <p className="text-muted-foreground mb-6">{product.description}</p>
 
-                {/* Features */}
                 <div className="flex flex-wrap gap-2 mb-8">
                   {product.features.map((feat) => (
                     <span key={feat} className="flex items-center gap-1 px-3 py-1.5 bg-secondary rounded-full text-xs font-medium text-foreground">
-                      <Check className="w-3 h-3 text-accent" />
-                      {feat}
+                      <Check className="w-3 h-3 text-accent" /> {feat}
                     </span>
                   ))}
                 </div>
 
-                <div className="text-3xl font-display font-bold text-foreground mb-6">
-                  {formatPrice(product.price)}
-                </div>
+                <div className="text-3xl font-display font-bold text-foreground mb-6">{formatPrice(product.price)}</div>
 
-                {/* KoraPay Badge */}
                 <div className="mb-6">
                   <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-xl text-sm font-medium text-blue-700">
-                    <span className="text-base">🔵</span>
-                    Secure payment powered by KoraPay
+                    <span className="text-base">🔵</span> Secure payment powered by KoraPay
                   </div>
                 </div>
 
-                {/* Purchase Options */}
                 <div className="space-y-4 mb-8">
                   <Button
                     onClick={() => handlePayment("full_payment")}
                     disabled={loadingPayment}
                     className="w-full bg-gradient-gold text-accent-foreground font-semibold py-6 text-base rounded-xl hover:opacity-90 shadow-gold"
                   >
-                    {loadingPayment ? (
-                      <Loader2 className="mr-2 w-5 h-5 animate-spin" />
-                    ) : (
-                      <ShoppingBag className="mr-2 w-5 h-5" />
-                    )}
+                    {loadingPayment ? <Loader2 className="mr-2 w-5 h-5 animate-spin" /> : <ShoppingBag className="mr-2 w-5 h-5" />}
                     Buy Now – {formatPrice(product.price)}
                   </Button>
 
@@ -165,14 +160,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
                         <span className="text-muted-foreground">Deposit Amount</span>
                         <span className="font-semibold text-foreground">{formatPrice(depositAmount)}</span>
                       </div>
-                      <Slider
-                        value={[depositAmount]}
-                        onValueChange={([val]) => setDepositAmount(val)}
-                        min={product.minDeposit}
-                        max={product.price}
-                        step={5000}
-                        className="mb-4"
-                      />
+                      <Slider value={[depositAmount]} onValueChange={([val]) => setDepositAmount(val)} min={product.minDeposit} max={product.price} step={5000} className="mb-4" />
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>Min: {formatPrice(product.minDeposit)}</span>
                         <span>Full: {formatPrice(product.price)}</span>
@@ -203,9 +191,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
                     </div>
 
                     {depositAmount / product.price >= 0.5 && (
-                      <p className="text-xs text-accent font-medium mb-3">
-                        Great! You qualify for the lowest interest rate (10%)
-                      </p>
+                      <p className="text-xs text-accent font-medium mb-3">Great! You qualify for the lowest interest rate (10%)</p>
                     )}
 
                     <Button
@@ -214,11 +200,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
                       variant="outline"
                       className="w-full border-accent text-accent hover:bg-accent hover:text-accent-foreground py-5 rounded-xl"
                     >
-                      {loadingPayment ? (
-                        <Loader2 className="mr-2 w-5 h-5 animate-spin" />
-                      ) : (
-                        <CreditCard className="mr-2 w-5 h-5" />
-                      )}
+                      {loadingPayment ? <Loader2 className="mr-2 w-5 h-5 animate-spin" /> : <CreditCard className="mr-2 w-5 h-5" />}
                       Pay Deposit – {formatPrice(depositAmount)}
                     </Button>
                   </div>
