@@ -5,7 +5,9 @@ import {
   Plus, Package, Users, CreditCard, TrendingUp, Trash2, LogOut,
   BarChart3, Upload, Image, Eye, Search, Filter, ChevronDown,
   DollarSign, Calendar, ShoppingBag, AlertCircle, CheckCircle,
-  Clock, XCircle, Truck, ArrowUpRight, ArrowDownRight, MoreVertical
+  Clock, XCircle, Truck, ArrowUpRight, ArrowDownRight, MoreVertical,
+  Bell, Activity, Send, RefreshCw, Shield, LogIn, UserPlus,
+  AlertTriangle, Mail, Phone, MapPin
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -70,7 +72,33 @@ interface DBProfile {
   created_at: string;
 }
 
-type TabType = "overview" | "products" | "orders" | "payments" | "customers";
+interface DBActivityLog {
+  id: string;
+  user_id: string | null;
+  event_type: string;
+  email: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+interface DBInstallmentReminder {
+  id: string;
+  order_id: string;
+  user_id: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  reminder_type: string;
+  status: string;
+  message: string | null;
+  amount_due: number | null;
+  days_overdue: number | null;
+  sent_at: string;
+  created_at: string;
+}
+
+type TabType = "overview" | "products" | "orders" | "payments" | "customers" | "reminders" | "activity";
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -92,23 +120,37 @@ const statusIcons: Record<string, typeof Clock> = {
   cancelled: XCircle,
 };
 
-const CHART_COLORS = ["hsl(38,92%,50%)", "hsl(222,47%,11%)", "hsl(220,26%,20%)", "hsl(43,96%,56%)", "hsl(33,90%,40%)", "hsl(220,9%,46%)"];
+const activityConfig: Record<string, { label: string; color: string; icon: typeof LogIn }> = {
+  login: { label: "Login", color: "bg-green-100 text-green-700 border-green-200", icon: LogIn },
+  login_failed: { label: "Failed Login", color: "bg-red-100 text-red-700 border-red-200", icon: AlertTriangle },
+  signup: { label: "Sign Up", color: "bg-blue-100 text-blue-700 border-blue-200", icon: UserPlus },
+  signup_failed: { label: "Signup Failed", color: "bg-red-100 text-red-700 border-red-200", icon: AlertTriangle },
+  logout: { label: "Logout", color: "bg-gray-100 text-gray-700 border-gray-200", icon: LogOut },
+  password_reset: { label: "Password Reset", color: "bg-orange-100 text-orange-700 border-orange-200", icon: Shield },
+};
 
+const CHART_COLORS = ["hsl(38,92%,50%)", "hsl(222,47%,11%)", "hsl(220,26%,20%)", "hsl(43,96%,56%)", "hsl(33,90%,40%)", "hsl(220,9%,46%)"];
 const categories = ["Televisions", "Refrigerators", "Washing Machines", "Air Conditioners", "Microwaves", "Generators"];
 
 const AdminDashboard = () => {
   const { user, isAdmin, signOut, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
   const [products, setProducts] = useState<DBProduct[]>([]);
   const [orders, setOrders] = useState<DBOrder[]>([]);
   const [payments, setPayments] = useState<DBPayment[]>([]);
   const [customers, setCustomers] = useState<DBProfile[]>([]);
+  const [activityLogs, setActivityLogs] = useState<DBActivityLog[]>([]);
+  const [reminders, setReminders] = useState<DBInstallmentReminder[]>([]);
+
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
   const [productImages, setProductImages] = useState<File[]>([]);
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const [activityFilter, setActivityFilter] = useState<string>("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [newProduct, setNewProduct] = useState({
@@ -126,16 +168,20 @@ const AdminDashboard = () => {
   }, [user, isAdmin, authLoading]);
 
   const fetchData = async () => {
-    const [productsRes, ordersRes, paymentsRes, customersRes] = await Promise.all([
+    const [productsRes, ordersRes, paymentsRes, customersRes, activityRes, remindersRes] = await Promise.all([
       supabase.from("products").select("*").order("created_at", { ascending: false }),
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
       supabase.from("payments").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+      supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(200),
+      supabase.from("installment_reminders").select("*").order("created_at", { ascending: false }).limit(100),
     ]);
     if (productsRes.data) setProducts(productsRes.data);
     if (ordersRes.data) setOrders(ordersRes.data);
     if (paymentsRes.data) setPayments(paymentsRes.data);
     if (customersRes.data) setCustomers(customersRes.data);
+    if (activityRes.data) setActivityLogs(activityRes.data as DBActivityLog[]);
+    if (remindersRes.data) setReminders(remindersRes.data);
     setLoading(false);
   };
 
@@ -145,10 +191,7 @@ const AdminDashboard = () => {
       const ext = file.name.split(".").pop();
       const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       const { error } = await supabase.storage.from("product-images").upload(path, file);
-      if (error) {
-        toast.error(`Failed to upload ${file.name}`);
-        continue;
-      }
+      if (error) { toast.error(`Failed to upload ${file.name}`); continue; }
       const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
       urls.push(urlData.publicUrl);
     }
@@ -156,34 +199,22 @@ const AdminDashboard = () => {
   };
 
   const handleAddProduct = async () => {
-    if (!newProduct.name || !newProduct.price) {
-      toast.error("Name and price are required");
-      return;
-    }
-
+    if (!newProduct.name || !newProduct.price) { toast.error("Name and price are required"); return; }
     setUploadingImage(true);
     let imageUrls: string[] = [];
-    if (productImages.length > 0) {
-      imageUrls = await handleImageUpload(productImages);
-    }
-
+    if (productImages.length > 0) imageUrls = await handleImageUpload(productImages);
     const { error } = await supabase.from("products").insert({
-      name: newProduct.name,
-      brand: newProduct.brand,
-      category: newProduct.category,
+      name: newProduct.name, brand: newProduct.brand, category: newProduct.category,
       description: newProduct.description || null,
-      price: Number(newProduct.price),
-      min_deposit: Number(newProduct.min_deposit) || 0,
+      price: Number(newProduct.price), min_deposit: Number(newProduct.min_deposit) || 0,
       max_installment_months: Number(newProduct.max_installment_months) || 6,
-      features: newProduct.features.split(",").map((f) => f.trim()).filter(Boolean),
+      features: newProduct.features.split(",").map(f => f.trim()).filter(Boolean),
       images: imageUrls.length > 0 ? imageUrls : null,
     });
-
     setUploadingImage(false);
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("Product added successfully!");
+    if (error) { toast.error(error.message); }
+    else {
+      toast.success("Product added!");
       setShowAddProduct(false);
       setNewProduct({ name: "", brand: "Hisense", category: "Televisions", description: "", price: "", min_deposit: "", max_installment_months: "6", features: "" });
       setProductImages([]);
@@ -203,11 +234,79 @@ const AdminDashboard = () => {
     else { toast.success("Status updated"); fetchData(); }
   };
 
-  // Analytics data
+  const handleSendReminder = async (order: DBOrder) => {
+    setSendingReminder(order.id);
+    const customer = customers.find(c => c.user_id === order.user_id);
+    const daysOverdue = order.next_payment_due
+      ? Math.floor((Date.now() - new Date(order.next_payment_due).getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    // Get customer email from supabase auth (we use profiles for name/phone)
+    // For now, log the reminder with available info and call the edge function
+    const { data: session } = await supabase.auth.getSession();
+    const token = session.session?.access_token;
+
+    if (!token) { toast.error("Session expired, please re-login"); setSendingReminder(null); return; }
+
+    // We need the customer's email — stored in auth.users, not profiles
+    // Use a placeholder email format or retrieve it
+    const customerEmail = customer?.phone
+      ? `customer-${order.user_id.slice(0, 8)}@placeholder.com`
+      : `customer-${order.user_id.slice(0, 8)}@placeholder.com`;
+
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-reminder`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "apikey": import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({
+        order_id: order.id,
+        user_id: order.user_id,
+        customer_name: customer?.full_name || "Customer",
+        customer_email: customerEmail,
+        product_name: order.product_name,
+        amount_due: order.remaining_balance,
+        days_overdue: Math.max(0, daysOverdue),
+      }),
+    });
+
+    const result = await res.json();
+    setSendingReminder(null);
+
+    if (result.success !== false) {
+      toast.success(result.message || "Reminder logged successfully");
+      fetchData();
+    } else {
+      toast.error(result.error || "Failed to send reminder");
+    }
+  };
+
+  // Analytics
   const totalRevenue = orders.reduce((sum, o) => sum + o.total_paid, 0);
   const pendingPayments = orders.reduce((sum, o) => sum + o.remaining_balance, 0);
   const completedOrders = orders.filter(o => o.status === "delivered").length;
   const activeOrders = orders.filter(o => !["delivered", "cancelled"].includes(o.status)).length;
+
+  // Overdue installments
+  const overdueOrders = orders.filter(o =>
+    o.payment_type === "installment" &&
+    o.remaining_balance > 0 &&
+    o.next_payment_due &&
+    new Date(o.next_payment_due) < new Date() &&
+    !["delivered", "cancelled", "fully_paid"].includes(o.status)
+  );
+
+  // Upcoming (due within 7 days)
+  const upcomingOrders = orders.filter(o =>
+    o.payment_type === "installment" &&
+    o.remaining_balance > 0 &&
+    o.next_payment_due &&
+    new Date(o.next_payment_due) >= new Date() &&
+    new Date(o.next_payment_due) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) &&
+    !["delivered", "cancelled", "fully_paid"].includes(o.status)
+  );
 
   const ordersByStatus = Object.entries(
     orders.reduce((acc, o) => { acc[o.status] = (acc[o.status] || 0) + 1; return acc; }, {} as Record<string, number>)
@@ -230,22 +329,29 @@ const AdminDashboard = () => {
     p.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
   const filteredOrders = orders.filter(o =>
     o.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     o.status.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
   const filteredPayments = payments.filter(p =>
     p.payment_reference?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.payment_gateway?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.status.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
   const filteredCustomers = customers.filter(c =>
     c.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.phone?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const filteredActivity = activityLogs.filter(a =>
+    (activityFilter === "all" || a.event_type === activityFilter) &&
+    (searchQuery === "" || a.email?.toLowerCase().includes(searchQuery.toLowerCase()) || a.event_type.includes(searchQuery.toLowerCase()))
+  );
+
+  // Activity stats
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayLogins = activityLogs.filter(a => a.event_type === "login" && new Date(a.created_at) >= todayStart).length;
+  const todaySignups = activityLogs.filter(a => a.event_type === "signup" && new Date(a.created_at) >= todayStart).length;
+  const failedLogins = activityLogs.filter(a => a.event_type === "login_failed").length;
 
   if (authLoading || loading) {
     return (
@@ -255,12 +361,14 @@ const AdminDashboard = () => {
     );
   }
 
-  const tabs: { id: TabType; label: string; icon: typeof BarChart3 }[] = [
+  const tabs: { id: TabType; label: string; icon: typeof BarChart3; badge?: number }[] = [
     { id: "overview", label: "Overview", icon: BarChart3 },
     { id: "products", label: "Products", icon: Package },
-    { id: "orders", label: "Orders", icon: ShoppingBag },
+    { id: "orders", label: "Orders", icon: ShoppingBag, badge: activeOrders || undefined },
     { id: "payments", label: "Payments", icon: CreditCard },
     { id: "customers", label: "Customers", icon: Users },
+    { id: "reminders", label: "Reminders", icon: Bell, badge: overdueOrders.length || undefined },
+    { id: "activity", label: "Activity", icon: Activity },
   ];
 
   return (
@@ -278,14 +386,19 @@ const AdminDashboard = () => {
                 <p className="text-[10px] text-muted-foreground">Management Console</p>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={signOut} className="text-muted-foreground hover:text-foreground">
-              <LogOut className="w-4 h-4 mr-1" /> Logout
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={fetchData} className="text-muted-foreground hover:text-foreground">
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={signOut} className="text-muted-foreground hover:text-foreground">
+                <LogOut className="w-4 h-4 mr-1" /> Logout
+              </Button>
+            </div>
           </div>
 
           {/* Tabs */}
           <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-hide -mb-px">
-            {tabs.map(({ id, label, icon: Icon }) => (
+            {tabs.map(({ id, label, icon: Icon, badge }) => (
               <button
                 key={id}
                 onClick={() => { setActiveTab(id); setSearchQuery(""); }}
@@ -297,8 +410,8 @@ const AdminDashboard = () => {
               >
                 <Icon className="w-3.5 h-3.5" />
                 {label}
-                {id === "orders" && activeOrders > 0 && (
-                  <span className="bg-destructive text-destructive-foreground text-[10px] px-1.5 py-0.5 rounded-full">{activeOrders}</span>
+                {badge !== undefined && badge > 0 && (
+                  <span className="bg-destructive text-destructive-foreground text-[10px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{badge}</span>
                 )}
               </button>
             ))}
@@ -308,10 +421,10 @@ const AdminDashboard = () => {
 
       <div className="container mx-auto px-4 lg:px-8 py-6">
         <AnimatePresence mode="wait">
-          {/* OVERVIEW TAB */}
+
+          {/* ── OVERVIEW TAB ── */}
           {activeTab === "overview" && (
             <motion.div key="overview" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              {/* Stats Grid */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
                 {[
                   { icon: DollarSign, label: "Total Revenue", value: formatPrice(totalRevenue), trend: "+12%", up: true, color: "bg-green-50 text-green-600" },
@@ -319,16 +432,9 @@ const AdminDashboard = () => {
                   { icon: ShoppingBag, label: "Total Orders", value: orders.length.toString(), trend: `${completedOrders} delivered`, up: true, color: "bg-blue-50 text-blue-600" },
                   { icon: Users, label: "Customers", value: customers.length.toString(), trend: `${products.length} products`, up: true, color: "bg-purple-50 text-purple-600" },
                 ].map(({ icon: Icon, label, value, trend, up, color }, i) => (
-                  <motion.div
-                    key={label}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                    className="bg-card rounded-2xl p-4 shadow-sm border border-border/50"
-                  >
-                    <div className={`w-8 h-8 rounded-xl ${color} flex items-center justify-center mb-3`}>
-                      <Icon className="w-4 h-4" />
-                    </div>
+                  <motion.div key={label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+                    className="bg-card rounded-2xl p-4 shadow-sm border border-border/50">
+                    <div className={`w-8 h-8 rounded-xl ${color} flex items-center justify-center mb-3`}><Icon className="w-4 h-4" /></div>
                     <p className="text-[11px] text-muted-foreground mb-1">{label}</p>
                     <p className="text-lg font-display font-bold text-foreground">{value}</p>
                     <div className="flex items-center gap-1 mt-1">
@@ -339,7 +445,25 @@ const AdminDashboard = () => {
                 ))}
               </div>
 
-              {/* Charts */}
+              {/* Alert bar for overdue installments */}
+              {overdueOrders.length > 0 && (
+                <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+                  className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <AlertTriangle className="w-4 h-4 text-red-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-red-800">{overdueOrders.length} overdue installment{overdueOrders.length !== 1 ? "s" : ""}</p>
+                      <p className="text-xs text-red-600">Customers with missed installment payments</p>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setActiveTab("reminders")} className="border-red-300 text-red-700 hover:bg-red-100 text-xs flex-shrink-0">
+                    View <ArrowUpRight className="w-3 h-3 ml-1" />
+                  </Button>
+                </motion.div>
+              )}
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
                 <div className="bg-card rounded-2xl p-5 shadow-sm border border-border/50">
                   <h3 className="text-sm font-display font-semibold text-foreground mb-4">Revenue Trend</h3>
@@ -353,12 +477,12 @@ const AdminDashboard = () => {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-
                 <div className="bg-card rounded-2xl p-5 shadow-sm border border-border/50">
                   <h3 className="text-sm font-display font-semibold text-foreground mb-4">Orders by Status</h3>
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
-                      <Pie data={ordersByStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, value }) => `${name} (${value})`} labelLine={{ stroke: "hsl(220,9%,46%)" }}>
+                      <Pie data={ordersByStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value"
+                        label={({ name, value }) => `${name} (${value})`} labelLine={{ stroke: "hsl(220,9%,46%)" }}>
                         {ordersByStatus.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                       </Pie>
                       <Tooltip />
@@ -367,7 +491,7 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
-              <div className="bg-card rounded-2xl p-5 shadow-sm border border-border/50">
+              <div className="bg-card rounded-2xl p-5 shadow-sm border border-border/50 mb-4">
                 <h3 className="text-sm font-display font-semibold text-foreground mb-4">Products by Category</h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={productsByCategory}>
@@ -380,8 +504,7 @@ const AdminDashboard = () => {
                 </ResponsiveContainer>
               </div>
 
-              {/* Recent Orders */}
-              <div className="mt-6 bg-card rounded-2xl p-5 shadow-sm border border-border/50">
+              <div className="bg-card rounded-2xl p-5 shadow-sm border border-border/50">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-display font-semibold text-foreground">Recent Orders</h3>
                   <Button variant="ghost" size="sm" onClick={() => setActiveTab("orders")} className="text-xs text-accent">
@@ -417,7 +540,7 @@ const AdminDashboard = () => {
             </motion.div>
           )}
 
-          {/* PRODUCTS TAB */}
+          {/* ── PRODUCTS TAB ── */}
           {activeTab === "products" && (
             <motion.div key="products" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -438,7 +561,7 @@ const AdminDashboard = () => {
                     <div className="space-y-4 mt-4">
                       <div>
                         <label className="text-sm font-medium text-foreground mb-1 block">Product Name</label>
-                        <Input value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="Hisense 55&quot; 4K Smart TV" className="rounded-xl" />
+                        <Input value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} placeholder='Hisense 55" 4K Smart TV' className="rounded-xl" />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -474,40 +597,28 @@ const AdminDashboard = () => {
                         <Input type="number" value={newProduct.max_installment_months} onChange={e => setNewProduct({ ...newProduct, max_installment_months: e.target.value })} className="rounded-xl" />
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-foreground mb-1 block">Features (comma separated)</label>
-                        <Input value={newProduct.features} onChange={e => setNewProduct({ ...newProduct, features: e.target.value })} placeholder="4K UHD, Smart TV, HDR" className="rounded-xl" />
+                        <label className="text-sm font-medium text-foreground mb-1 block">Features (comma-separated)</label>
+                        <Input value={newProduct.features} onChange={e => setNewProduct({ ...newProduct, features: e.target.value })} placeholder="4K, Smart TV, HDR" className="rounded-xl" />
                       </div>
-
-                      {/* Image Upload */}
                       <div>
                         <label className="text-sm font-medium text-foreground mb-1 block">Product Images</label>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          className="hidden"
-                          onChange={e => {
-                            if (e.target.files) setProductImages(Array.from(e.target.files));
-                          }}
-                        />
                         <div
                           onClick={() => fileInputRef.current?.click()}
                           className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer hover:border-accent transition-colors"
                         >
-                          <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                          <Upload className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
                           <p className="text-sm text-muted-foreground">Click to upload images</p>
                           <p className="text-[10px] text-muted-foreground mt-1">PNG, JPG up to 5MB each</p>
                         </div>
+                        <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden"
+                          onChange={e => setProductImages(Array.from(e.target.files || []))} />
                         {productImages.length > 0 && (
                           <div className="flex gap-2 mt-3 flex-wrap">
                             {productImages.map((file, i) => (
                               <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border">
                                 <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setProductImages(productImages.filter((_, j) => j !== i)); }}
-                                  className="absolute top-0.5 right-0.5 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center"
-                                >
+                                <button onClick={(e) => { e.stopPropagation(); setProductImages(productImages.filter((_, j) => j !== i)); }}
+                                  className="absolute top-0.5 right-0.5 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center">
                                   <XCircle className="w-3 h-3" />
                                 </button>
                               </div>
@@ -515,7 +626,6 @@ const AdminDashboard = () => {
                           </div>
                         )}
                       </div>
-
                       <Button onClick={handleAddProduct} disabled={uploadingImage} className="w-full bg-gradient-gold text-accent-foreground rounded-xl shadow-gold">
                         {uploadingImage ? "Uploading..." : "Add Product"}
                       </Button>
@@ -525,22 +635,14 @@ const AdminDashboard = () => {
               </div>
 
               <div className="text-xs text-muted-foreground mb-3">{filteredProducts.length} products</div>
-
               <div className="space-y-2">
                 {filteredProducts.map((product, i) => (
-                  <motion.div
-                    key={product.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="bg-card rounded-xl p-3 shadow-sm border border-border/50 flex items-center gap-3"
-                  >
+                  <motion.div key={product.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
+                    className="bg-card rounded-xl p-3 shadow-sm border border-border/50 flex items-center gap-3">
                     <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {product.images && product.images[0] ? (
-                        <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <Image className="w-5 h-5 text-muted-foreground" />
-                      )}
+                      {product.images && product.images[0]
+                        ? <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover" />
+                        : <Image className="w-5 h-5 text-muted-foreground" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="text-xs font-semibold text-foreground truncate">{product.name}</h3>
@@ -559,35 +661,28 @@ const AdminDashboard = () => {
                 ))}
                 {filteredProducts.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground text-sm">
-                    <Package className="w-10 h-10 mx-auto mb-2 text-border" />
-                    No products found
+                    <Package className="w-10 h-10 mx-auto mb-2 text-border" /> No products found
                   </div>
                 )}
               </div>
             </motion.div>
           )}
 
-          {/* ORDERS TAB */}
+          {/* ── ORDERS TAB ── */}
           {activeTab === "orders" && (
             <motion.div key="orders" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input placeholder="Search orders..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
               </div>
-
               <div className="text-xs text-muted-foreground mb-3">{filteredOrders.length} orders</div>
-
               <div className="space-y-2">
                 {filteredOrders.map((order, i) => {
                   const StatusIcon = statusIcons[order.status] || Clock;
+                  const isOverdue = order.next_payment_due && new Date(order.next_payment_due) < new Date() && order.remaining_balance > 0;
                   return (
-                    <motion.div
-                      key={order.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                      className="bg-card rounded-xl p-4 shadow-sm border border-border/50"
-                    >
+                    <motion.div key={order.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
+                      className={`bg-card rounded-xl p-4 shadow-sm border ${isOverdue ? "border-red-200 bg-red-50/30" : "border-border/50"}`}>
                       <div className="flex items-start justify-between gap-2 mb-3">
                         <div className="flex items-center gap-2">
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${statusColors[order.status]}`}>
@@ -598,8 +693,10 @@ const AdminDashboard = () => {
                             <p className="text-[10px] text-muted-foreground">{new Date(order.created_at).toLocaleDateString()} • {order.payment_type.replace(/_/g, " ")}</p>
                           </div>
                         </div>
+                        {isOverdue && (
+                          <Badge variant="outline" className="text-[9px] bg-red-50 text-red-700 border-red-200 flex-shrink-0">Overdue</Badge>
+                        )}
                       </div>
-
                       <div className="grid grid-cols-3 gap-2 mb-3">
                         <div className="bg-secondary/50 rounded-lg p-2">
                           <p className="text-[9px] text-muted-foreground">Total</p>
@@ -614,15 +711,15 @@ const AdminDashboard = () => {
                           <p className="text-[11px] font-bold text-orange-600">{formatPrice(order.remaining_balance)}</p>
                         </div>
                       </div>
-
-                      {/* Progress bar */}
+                      {order.next_payment_due && (
+                        <p className={`text-[10px] mb-2 ${isOverdue ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                          {isOverdue ? "⚠ Overdue since" : "Next due:"} {new Date(order.next_payment_due).toLocaleDateString()}
+                        </p>
+                      )}
                       <div className="w-full bg-secondary rounded-full h-1.5 mb-3">
-                        <div
-                          className="bg-accent rounded-full h-1.5 transition-all"
-                          style={{ width: `${order.total_payable > 0 ? Math.min((order.total_paid / order.total_payable) * 100, 100) : 0}%` }}
-                        />
+                        <div className="bg-accent rounded-full h-1.5 transition-all"
+                          style={{ width: `${order.total_payable > 0 ? Math.min((order.total_paid / order.total_payable) * 100, 100) : 0}%` }} />
                       </div>
-
                       <Select value={order.status} onValueChange={v => handleUpdateOrderStatus(order.id, v)}>
                         <SelectTrigger className="w-full rounded-xl text-xs h-8"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -636,15 +733,14 @@ const AdminDashboard = () => {
                 })}
                 {filteredOrders.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground text-sm">
-                    <ShoppingBag className="w-10 h-10 mx-auto mb-2 text-border" />
-                    No orders found
+                    <ShoppingBag className="w-10 h-10 mx-auto mb-2 text-border" /> No orders found
                   </div>
                 )}
               </div>
             </motion.div>
           )}
 
-          {/* PAYMENTS TAB */}
+          {/* ── PAYMENTS TAB ── */}
           {activeTab === "payments" && (
             <motion.div key="payments" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div className="relative mb-4">
@@ -652,7 +748,6 @@ const AdminDashboard = () => {
                 <Input placeholder="Search payments..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
               </div>
 
-              {/* Payment Stats */}
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="bg-card rounded-xl p-3 shadow-sm border border-border/50 text-center">
                   <p className="text-[10px] text-muted-foreground">Total</p>
@@ -668,27 +763,27 @@ const AdminDashboard = () => {
                 </div>
               </div>
 
-              <div className="text-xs text-muted-foreground mb-3">{filteredPayments.length} payments</div>
+              {/* Kora Payment Info Banner */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4 flex items-start gap-3">
+                <CreditCard className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-blue-800">Kora Payment Gateway Active</p>
+                  <p className="text-[11px] text-blue-600 mt-0.5">Payments via Korapay are processed securely. Set <code className="bg-blue-100 px-1 rounded">KORA_SECRET_KEY</code> in Supabase Edge Function secrets to activate.</p>
+                </div>
+              </div>
 
+              <div className="text-xs text-muted-foreground mb-3">{filteredPayments.length} payments</div>
               <div className="space-y-2">
                 {filteredPayments.map((payment, i) => (
-                  <motion.div
-                    key={payment.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="bg-card rounded-xl p-3 shadow-sm border border-border/50"
-                  >
+                  <motion.div key={payment.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
+                    className="bg-card rounded-xl p-3 shadow-sm border border-border/50">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                           payment.status === "success" ? "bg-green-50 text-green-600" :
-                          payment.status === "pending" ? "bg-yellow-50 text-yellow-600" :
-                          "bg-red-50 text-red-600"
-                        }`}>
+                          payment.status === "pending" ? "bg-yellow-50 text-yellow-600" : "bg-red-50 text-red-600"}`}>
                           {payment.status === "success" ? <CheckCircle className="w-4 h-4" /> :
-                           payment.status === "pending" ? <Clock className="w-4 h-4" /> :
-                           <XCircle className="w-4 h-4" />}
+                           payment.status === "pending" ? <Clock className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-foreground">{formatPrice(payment.amount)}</p>
@@ -701,8 +796,7 @@ const AdminDashboard = () => {
                         <Badge variant="outline" className={`text-[9px] ${
                           payment.status === "success" ? "text-green-600 border-green-200 bg-green-50" :
                           payment.status === "pending" ? "text-yellow-600 border-yellow-200 bg-yellow-50" :
-                          "text-red-600 border-red-200 bg-red-50"
-                        }`}>
+                          "text-red-600 border-red-200 bg-red-50"}`}>
                           {payment.status}
                         </Badge>
                         {payment.payment_reference && (
@@ -714,47 +808,44 @@ const AdminDashboard = () => {
                 ))}
                 {filteredPayments.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground text-sm">
-                    <CreditCard className="w-10 h-10 mx-auto mb-2 text-border" />
-                    No payments found
+                    <CreditCard className="w-10 h-10 mx-auto mb-2 text-border" /> No payments found
                   </div>
                 )}
               </div>
             </motion.div>
           )}
 
-          {/* CUSTOMERS TAB */}
+          {/* ── CUSTOMERS TAB ── */}
           {activeTab === "customers" && (
             <motion.div key="customers" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input placeholder="Search customers..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
               </div>
-
               <div className="text-xs text-muted-foreground mb-3">{filteredCustomers.length} customers</div>
-
               <div className="space-y-2">
                 {filteredCustomers.map((customer, i) => {
                   const customerOrders = orders.filter(o => o.user_id === customer.user_id);
                   const totalSpent = customerOrders.reduce((s, o) => s + o.total_paid, 0);
+                  const hasOverdue = customerOrders.some(o =>
+                    o.next_payment_due && new Date(o.next_payment_due) < new Date() && o.remaining_balance > 0
+                  );
                   return (
-                    <motion.div
-                      key={customer.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                      className="bg-card rounded-xl p-4 shadow-sm border border-border/50"
-                    >
+                    <motion.div key={customer.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
+                      className="bg-card rounded-xl p-4 shadow-sm border border-border/50">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-                          <span className="text-sm font-bold text-accent">
-                            {(customer.full_name || "?")[0].toUpperCase()}
-                          </span>
+                          <span className="text-sm font-bold text-accent">{(customer.full_name || "?")[0].toUpperCase()}</span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-xs font-semibold text-foreground">{customer.full_name || "Unknown"}</h3>
-                          <p className="text-[10px] text-muted-foreground">
-                            {customer.phone || "No phone"} • Joined {new Date(customer.created_at).toLocaleDateString()}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-xs font-semibold text-foreground">{customer.full_name || "Unknown"}</h3>
+                            {hasOverdue && <Badge variant="outline" className="text-[9px] bg-red-50 text-red-600 border-red-200">Overdue</Badge>}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {customer.phone && <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Phone className="w-2.5 h-2.5" />{customer.phone}</span>}
+                            <span className="text-[10px] text-muted-foreground">Joined {new Date(customer.created_at).toLocaleDateString()}</span>
+                          </div>
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="text-xs font-bold text-foreground">{formatPrice(totalSpent)}</p>
@@ -762,20 +853,292 @@ const AdminDashboard = () => {
                         </div>
                       </div>
                       {customer.address && (
-                        <p className="text-[10px] text-muted-foreground mt-2 pl-[52px]">📍 {customer.address}</p>
+                        <p className="text-[10px] text-muted-foreground mt-2 pl-[52px] flex items-center gap-1">
+                          <MapPin className="w-2.5 h-2.5" />{customer.address}
+                        </p>
                       )}
                     </motion.div>
                   );
                 })}
                 {filteredCustomers.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground text-sm">
-                    <Users className="w-10 h-10 mx-auto mb-2 text-border" />
-                    No customers found
+                    <Users className="w-10 h-10 mx-auto mb-2 text-border" /> No customers found
                   </div>
                 )}
               </div>
             </motion.div>
           )}
+
+          {/* ── REMINDERS TAB ── */}
+          {activeTab === "reminders" && (
+            <motion.div key="reminders" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-3 mb-5">
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                  <p className="text-[10px] text-red-600 font-medium">Overdue</p>
+                  <p className="text-xl font-bold text-red-700">{overdueOrders.length}</p>
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-center">
+                  <p className="text-[10px] text-yellow-600 font-medium">Due This Week</p>
+                  <p className="text-xl font-bold text-yellow-700">{upcomingOrders.length}</p>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                  <p className="text-[10px] text-green-600 font-medium">Reminders Sent</p>
+                  <p className="text-xl font-bold text-green-700">{reminders.length}</p>
+                </div>
+              </div>
+
+              {/* Overdue Installments */}
+              <div className="bg-card rounded-2xl p-5 shadow-sm border border-border/50 mb-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-7 h-7 bg-red-100 rounded-lg flex items-center justify-center">
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                  </div>
+                  <h3 className="text-sm font-display font-semibold text-foreground">Overdue Installments</h3>
+                  {overdueOrders.length > 0 && (
+                    <Badge className="bg-red-100 text-red-700 border-0 text-[10px]">{overdueOrders.length}</Badge>
+                  )}
+                </div>
+
+                {overdueOrders.length === 0 ? (
+                  <div className="text-center py-8">
+                    <CheckCircle className="w-10 h-10 text-green-400 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">No overdue installments</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {overdueOrders.map((order, i) => {
+                      const customer = customers.find(c => c.user_id === order.user_id);
+                      const daysOverdue = order.next_payment_due
+                        ? Math.floor((Date.now() - new Date(order.next_payment_due).getTime()) / (1000 * 60 * 60 * 24))
+                        : 0;
+                      const alreadySent = reminders.some(r => r.order_id === order.id);
+                      return (
+                        <motion.div key={order.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
+                          className="border border-red-100 bg-red-50/40 rounded-xl p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="text-xs font-semibold text-foreground truncate">{order.product_name}</p>
+                                <Badge variant="outline" className="text-[9px] bg-red-100 text-red-700 border-red-200 flex-shrink-0">
+                                  {daysOverdue}d overdue
+                                </Badge>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground mb-2">
+                                Customer: {customer?.full_name || "Unknown"} {customer?.phone ? `• ${customer.phone}` : ""}
+                              </p>
+                              <div className="flex gap-3">
+                                <div>
+                                  <p className="text-[9px] text-muted-foreground">Balance Due</p>
+                                  <p className="text-xs font-bold text-red-700">{formatPrice(order.remaining_balance)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[9px] text-muted-foreground">Due Date</p>
+                                  <p className="text-xs font-medium text-foreground">{order.next_payment_due ? new Date(order.next_payment_due).toLocaleDateString() : "N/A"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[9px] text-muted-foreground">Installment</p>
+                                  <p className="text-xs font-medium text-foreground">{order.installment_months}mo plan</p>
+                                </div>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => handleSendReminder(order)}
+                              disabled={sendingReminder === order.id}
+                              className={`flex-shrink-0 rounded-xl text-[11px] h-8 px-3 ${
+                                alreadySent
+                                  ? "bg-secondary text-foreground hover:bg-secondary/80"
+                                  : "bg-gradient-gold text-accent-foreground shadow-gold"
+                              }`}
+                            >
+                              {sendingReminder === order.id
+                                ? <RefreshCw className="w-3 h-3 animate-spin" />
+                                : <><Send className="w-3 h-3 mr-1" />{alreadySent ? "Re-send" : "Remind"}</>}
+                            </Button>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Upcoming This Week */}
+              {upcomingOrders.length > 0 && (
+                <div className="bg-card rounded-2xl p-5 shadow-sm border border-border/50 mb-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 bg-yellow-100 rounded-lg flex items-center justify-center">
+                      <Calendar className="w-3.5 h-3.5 text-yellow-600" />
+                    </div>
+                    <h3 className="text-sm font-display font-semibold text-foreground">Due This Week</h3>
+                    <Badge className="bg-yellow-100 text-yellow-700 border-0 text-[10px]">{upcomingOrders.length}</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {upcomingOrders.map((order) => {
+                      const customer = customers.find(c => c.user_id === order.user_id);
+                      const daysUntilDue = order.next_payment_due
+                        ? Math.ceil((new Date(order.next_payment_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                        : 0;
+                      return (
+                        <div key={order.id} className="border border-yellow-100 bg-yellow-50/40 rounded-xl p-3 flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-foreground truncate">{order.product_name}</p>
+                            <p className="text-[10px] text-muted-foreground">{customer?.full_name || "Unknown"} • Due in {daysUntilDue}d</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs font-bold text-yellow-700">{formatPrice(order.remaining_balance)}</p>
+                            <p className="text-[9px] text-muted-foreground">{order.next_payment_due ? new Date(order.next_payment_due).toLocaleDateString() : ""}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Reminder History */}
+              <div className="bg-card rounded-2xl p-5 shadow-sm border border-border/50">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Mail className="w-3.5 h-3.5 text-blue-600" />
+                  </div>
+                  <h3 className="text-sm font-display font-semibold text-foreground">Reminder History</h3>
+                </div>
+
+                {reminders.length === 0 ? (
+                  <p className="text-center text-xs text-muted-foreground py-6">No reminders sent yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {reminders.map((reminder, i) => (
+                      <motion.div key={reminder.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
+                        className="flex items-center justify-between gap-3 py-2.5 border-b border-border/30 last:border-0">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            reminder.status === "sent" ? "bg-green-100 text-green-600" :
+                            reminder.status === "failed" ? "bg-red-100 text-red-600" : "bg-yellow-100 text-yellow-600"}`}>
+                            {reminder.status === "sent" ? <CheckCircle className="w-3.5 h-3.5" /> :
+                             reminder.status === "failed" ? <XCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-foreground truncate">{reminder.customer_name || "Customer"}</p>
+                            <p className="text-[10px] text-muted-foreground">{reminder.amount_due ? formatPrice(reminder.amount_due) : ""} • {reminder.days_overdue}d overdue</p>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <Badge variant="outline" className={`text-[9px] ${
+                            reminder.status === "sent" ? "text-green-600 border-green-200 bg-green-50" :
+                            reminder.status === "failed" ? "text-red-600 border-red-200 bg-red-50" : "text-yellow-600 border-yellow-200 bg-yellow-50"}`}>
+                            {reminder.status}
+                          </Badge>
+                          <p className="text-[9px] text-muted-foreground mt-1">{new Date(reminder.sent_at).toLocaleDateString()}</p>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── ACTIVITY TAB ── */}
+          {activeTab === "activity" && (
+            <motion.div key="activity" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-3 mb-5">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                  <p className="text-[10px] text-green-600 font-medium">Today's Logins</p>
+                  <p className="text-xl font-bold text-green-700">{todayLogins}</p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                  <p className="text-[10px] text-blue-600 font-medium">Today's Signups</p>
+                  <p className="text-xl font-bold text-blue-700">{todaySignups}</p>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                  <p className="text-[10px] text-red-600 font-medium">Failed Logins</p>
+                  <p className="text-xl font-bold text-red-700">{failedLogins}</p>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input placeholder="Search by email..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
+                </div>
+                <Select value={activityFilter} onValueChange={setActivityFilter}>
+                  <SelectTrigger className="w-full sm:w-44 rounded-xl">
+                    <SelectValue placeholder="Filter by event" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Events</SelectItem>
+                    <SelectItem value="login">Logins</SelectItem>
+                    <SelectItem value="login_failed">Failed Logins</SelectItem>
+                    <SelectItem value="signup">Sign Ups</SelectItem>
+                    <SelectItem value="signup_failed">Failed Signups</SelectItem>
+                    <SelectItem value="logout">Logouts</SelectItem>
+                    <SelectItem value="password_reset">Password Resets</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="text-xs text-muted-foreground mb-3">{filteredActivity.length} events</div>
+
+              <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+                {filteredActivity.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground text-sm">
+                    <Activity className="w-10 h-10 mx-auto mb-2 text-border" />
+                    <p>No activity logs yet</p>
+                    <p className="text-xs mt-1">Logs will appear as users sign in and sign up</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/40">
+                    {filteredActivity.map((log, i) => {
+                      const config = activityConfig[log.event_type] || {
+                        label: log.event_type.replace(/_/g, " "),
+                        color: "bg-gray-100 text-gray-700 border-gray-200",
+                        icon: Activity,
+                      };
+                      const Icon = config.icon;
+                      const meta = log.metadata as Record<string, unknown>;
+                      return (
+                        <motion.div key={log.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.02, 0.3) }}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/20 transition-colors">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${config.color}`}>
+                            <Icon className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline" className={`text-[9px] border ${config.color}`}>{config.label}</Badge>
+                              {log.email && <span className="text-xs text-foreground font-medium truncate">{log.email}</span>}
+                            </div>
+                            <div className="flex items-center gap-3 mt-0.5">
+                              <span className="text-[10px] text-muted-foreground">{new Date(log.created_at).toLocaleString()}</span>
+                              {meta?.provider && typeof meta.provider === "string" && (
+                                <span className="text-[10px] text-muted-foreground">via {meta.provider}</span>
+                              )}
+                              {meta?.reason && typeof meta.reason === "string" && (
+                                <span className="text-[10px] text-red-500 truncate max-w-[160px]">{meta.reason}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-[9px] text-muted-foreground">
+                              {new Date(log.created_at).toLocaleDateString("en", { month: "short", day: "numeric" })}
+                            </p>
+                            <p className="text-[9px] text-muted-foreground">
+                              {new Date(log.created_at).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
         </AnimatePresence>
       </div>
     </div>
