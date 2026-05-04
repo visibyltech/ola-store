@@ -23,7 +23,7 @@ const PaymentCallback = () => {
       }
 
       try {
-        const { data, error } = await supabase.functions.invoke("verify-payment", {
+        const { data, error } = await supabase.functions.invoke("verify-kora-payment", {
           body: { reference, gateway, order_id: orderId },
         });
 
