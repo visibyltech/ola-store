@@ -11,16 +11,25 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const koraSecretKey = Deno.env.get("KORA_SECRET_KEY");
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Read KoraPay settings from DB (with env var fallback)
+    const { data: gatewaySettings } = await supabase
+      .from("payment_settings")
+      .select("secret_key, enabled")
+      .eq("gateway", "korapay")
+      .maybeSingle();
+
+    const koraSecretKey = (gatewaySettings?.secret_key && gatewaySettings.secret_key.length > 10)
+      ? gatewaySettings.secret_key
+      : Deno.env.get("KORA_SECRET_KEY");
 
     if (!koraSecretKey) {
       return new Response(
-        JSON.stringify({ error: "KORA_SECRET_KEY not configured" }),
+        JSON.stringify({ error: "KoraPay secret key not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
