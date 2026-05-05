@@ -5,6 +5,7 @@ import CategoriesSection from "@/components/CategoriesSection";
 import FeaturedProducts from "@/components/FeaturedProducts";
 import EasyBuyBanner from "@/components/EasyBuyBanner";
 import Footer from "@/components/Footer";
+import WhatsAppButton from "@/components/WhatsAppButton";
 
 const Index = () => {
   return (
@@ -16,6 +17,7 @@ const Index = () => {
       <FeaturedProducts />
       <EasyBuyBanner />
       <Footer />
+      <WhatsAppButton />
     </div>
   );
 };
