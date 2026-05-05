@@ -3,11 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, Package, Users, CreditCard, TrendingUp, Trash2, LogOut,
-  BarChart3, Upload, Image, Eye, Search, Filter, ChevronDown,
+  BarChart3, Upload, Image, Eye, EyeOff, Search, Filter, ChevronDown,
   DollarSign, Calendar, ShoppingBag, AlertCircle, CheckCircle,
   Clock, XCircle, Truck, ArrowUpRight, ArrowDownRight, MoreVertical,
   Bell, Activity, Send, RefreshCw, Shield, LogIn, UserPlus,
-  AlertTriangle, Mail, Phone, MapPin
+  AlertTriangle, Mail, Phone, MapPin, Settings, Key, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -98,7 +98,15 @@ interface DBInstallmentReminder {
   created_at: string;
 }
 
-type TabType = "overview" | "products" | "orders" | "payments" | "customers" | "reminders" | "activity";
+type TabType = "overview" | "products" | "orders" | "payments" | "customers" | "reminders" | "activity" | "settings";
+
+interface PaymentGatewaySetting {
+  gateway: string;
+  public_key: string;
+  secret_key: string;
+  enabled: boolean;
+  updated_at?: string;
+}
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -153,6 +161,14 @@ const AdminDashboard = () => {
   const [activityFilter, setActivityFilter] = useState<string>("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [koraSettings, setKoraSettings] = useState<PaymentGatewaySetting>({
+    gateway: "korapay", public_key: "", secret_key: "", enabled: true,
+  });
+  const [koraPublicKeyInput, setKoraPublicKeyInput] = useState("");
+  const [koraSecretKeyInput, setKoraSecretKeyInput] = useState("");
+  const [showKoraSecret, setShowKoraSecret] = useState(false);
+  const [savingKora, setSavingKora] = useState(false);
+
   const [newProduct, setNewProduct] = useState({
     name: "", brand: "Hisense", category: "Televisions",
     description: "", price: "", min_deposit: "", max_installment_months: "6",
@@ -183,6 +199,18 @@ const AdminDashboard = () => {
     if (activityRes.data) setActivityLogs(activityRes.data as DBActivityLog[]);
     if (remindersRes.data) setReminders(remindersRes.data);
     setLoading(false);
+
+    // Fetch payment gateway settings
+    const { data: gatewayData } = await supabase
+      .from("payment_settings")
+      .select("*")
+      .eq("gateway", "korapay")
+      .maybeSingle();
+    if (gatewayData) {
+      setKoraSettings(gatewayData as PaymentGatewaySetting);
+      setKoraPublicKeyInput(gatewayData.public_key || "");
+      setKoraSecretKeyInput(gatewayData.secret_key || "");
+    }
   };
 
   const handleImageUpload = async (files: File[]): Promise<string[]> => {
@@ -283,6 +311,42 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleSaveKoraSettings = async () => {
+    setSavingKora(true);
+    const updates: Partial<PaymentGatewaySetting> = {
+      public_key: koraPublicKeyInput,
+      updated_at: new Date().toISOString(),
+    };
+    if (koraSecretKeyInput && koraSecretKeyInput !== maskKey(koraSettings.secret_key)) {
+      updates.secret_key = koraSecretKeyInput;
+    }
+    const { error } = await supabase
+      .from("payment_settings")
+      .update(updates)
+      .eq("gateway", "korapay");
+    setSavingKora(false);
+    if (error) { toast.error("Failed to save: " + error.message); }
+    else { toast.success("KoraPay settings saved successfully"); fetchData(); }
+  };
+
+  const handleToggleKora = async () => {
+    const newEnabled = !koraSettings.enabled;
+    const { error } = await supabase
+      .from("payment_settings")
+      .update({ enabled: newEnabled, updated_at: new Date().toISOString() })
+      .eq("gateway", "korapay");
+    if (error) { toast.error("Failed to update: " + error.message); }
+    else {
+      setKoraSettings(s => ({ ...s, enabled: newEnabled }));
+      toast.success(`KoraPay ${newEnabled ? "enabled" : "disabled"}`);
+    }
+  };
+
+  const maskKey = (key: string) => {
+    if (!key || key.length < 8) return key;
+    return key.slice(0, 8) + "•".repeat(Math.min(key.length - 8, 20));
+  };
+
   // Analytics
   const totalRevenue = orders.reduce((sum, o) => sum + o.total_paid, 0);
   const pendingPayments = orders.reduce((sum, o) => sum + o.remaining_balance, 0);
@@ -369,6 +433,7 @@ const AdminDashboard = () => {
     { id: "customers", label: "Customers", icon: Users },
     { id: "reminders", label: "Reminders", icon: Bell, badge: overdueOrders.length || undefined },
     { id: "activity", label: "Activity", icon: Activity },
+    { id: "settings", label: "Settings", icon: Settings },
   ];
 
   return (
@@ -1135,6 +1200,134 @@ const AdminDashboard = () => {
                     })}
                   </div>
                 )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── SETTINGS TAB ── */}
+          {activeTab === "settings" && (
+            <motion.div key="settings" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <div className="mb-6">
+                <h2 className="text-xl font-display font-bold text-foreground">Settings</h2>
+                <p className="text-sm text-muted-foreground mt-1">Manage payment gateways and store configuration</p>
+              </div>
+
+              {/* KoraPay Gateway Card */}
+              <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden mb-6">
+                {/* Card Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 bg-secondary/20">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center">
+                      <CreditCard className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">KoraPay</p>
+                      <p className="text-[11px] text-muted-foreground">Payment gateway · Nigeria</p>
+                    </div>
+                  </div>
+                  {/* Toggle */}
+                  <button
+                    onClick={handleToggleKora}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border ${
+                      koraSettings.enabled
+                        ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                        : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                    }`}
+                  >
+                    {koraSettings.enabled
+                      ? <><ToggleRight className="w-4 h-4" /> Active</>
+                      : <><ToggleLeft className="w-4 h-4" /> Disabled</>
+                    }
+                  </button>
+                </div>
+
+                {/* Status banner */}
+                {!koraSettings.enabled && (
+                  <div className="flex items-center gap-2 px-5 py-3 bg-red-50 border-b border-red-100">
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                    <p className="text-xs text-red-600">Payment gateway is disabled. Customers cannot make payments.</p>
+                  </div>
+                )}
+                {koraSettings.enabled && (
+                  <div className="flex items-center gap-2 px-5 py-3 bg-green-50 border-b border-green-100">
+                    <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                    <p className="text-xs text-green-600">Payment gateway is active. Customers can pay via KoraPay.</p>
+                  </div>
+                )}
+
+                {/* Form fields */}
+                <div className="p-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                      <Key className="w-3 h-3 inline mr-1" />Public Key
+                    </label>
+                    <Input
+                      value={koraPublicKeyInput}
+                      onChange={e => setKoraPublicKeyInput(e.target.value)}
+                      placeholder="pk_live_... or pk_test_..."
+                      className="rounded-xl font-mono text-sm"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">Used on the client side to initialize payments</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                      <Shield className="w-3 h-3 inline mr-1" />Secret Key
+                    </label>
+                    <div className="relative">
+                      <Input
+                        type={showKoraSecret ? "text" : "password"}
+                        value={koraSecretKeyInput}
+                        onChange={e => setKoraSecretKeyInput(e.target.value)}
+                        placeholder="sk_live_... or sk_test_..."
+                        className="rounded-xl font-mono text-sm pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowKoraSecret(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showKoraSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Used by the server to verify and process payments. Never share this key.</p>
+                  </div>
+
+                  {koraSettings.updated_at && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Last updated: {new Date(koraSettings.updated_at).toLocaleString()}
+                    </p>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <Button
+                      onClick={handleSaveKoraSettings}
+                      disabled={savingKora}
+                      className="flex-1 rounded-xl bg-gradient-gold text-accent-foreground shadow-gold"
+                    >
+                      {savingKora ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Saving...</> : "Save Keys"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => { setKoraPublicKeyInput(koraSettings.public_key); setKoraSecretKeyInput(koraSettings.secret_key); }}
+                      className="rounded-xl"
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-amber-800">Security Notice</p>
+                    <p className="text-[11px] text-amber-700 mt-1">
+                      Your secret key is stored securely and is only accessible to the server. Use test keys during development and switch to live keys when you are ready to accept real payments.
+                    </p>
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
