@@ -100,23 +100,42 @@ const ProductDetail = () => {
     setLoadingPayment(true);
     try {
       const amount = type === "full_payment" ? product.price : depositAmount;
-      const callbackUrl = `${window.location.origin}/payment/callback?gateway=${selectedGateway}`;
+      const interestRate = type === "deposit" ? installment.interestRate : 0;
+      const totalPayable = type === "deposit" ? installment.totalPayable : product.price;
+      const remainingBalance = type === "deposit" ? installment.balance : 0;
 
-      const { data, error } = await supabase.functions.invoke("initialize-payment", {
-        body: {
-          gateway: selectedGateway,
-          amount,
-          email: user.email,
+      // Step 1: Create the order in Supabase
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          user_id: user.id,
           product_id: product.id,
           product_name: product.name,
           product_price: product.price,
           payment_type: type,
           deposit_amount: type === "deposit" ? depositAmount : product.price,
-          interest_rate: type === "deposit" ? installment.interestRate : 0,
-          total_payable: type === "deposit" ? installment.totalPayable : product.price,
-          remaining_balance: type === "deposit" ? installment.balance : 0,
+          interest_rate: interestRate,
+          total_payable: totalPayable,
+          remaining_balance: remainingBalance,
+          total_paid: 0,
           installment_months: type === "deposit" ? product.maxInstallmentMonths : 0,
-          callback_url: `${callbackUrl}&order_id=${encodeURIComponent("PENDING")}`,
+          status: "pending",
+        })
+        .select()
+        .single();
+
+      if (orderError) throw new Error("Failed to create order: " + orderError.message);
+
+      // Step 2: Call initialize-kora-payment with the order id
+      const redirectUrl = `${window.location.origin}/payment/callback?order_id=${order.id}`;
+
+      const { data, error } = await supabase.functions.invoke("initialize-kora-payment", {
+        body: {
+          order_id: order.id,
+          amount,
+          customer_email: user.email,
+          customer_name: user.user_metadata?.full_name || user.email,
+          redirect_url: redirectUrl,
         },
       });
 
@@ -124,7 +143,7 @@ const ProductDetail = () => {
       if (data?.payment_url) {
         window.location.href = data.payment_url;
       } else {
-        throw new Error("No payment URL received");
+        throw new Error(data?.error || "No payment URL received");
       }
     } catch (err: any) {
       console.error("Payment error:", err);
