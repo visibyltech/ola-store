@@ -33,6 +33,21 @@ const logActivity = async (
   }
 };
 
+const sendLoginNotification = async (accessToken: string) => {
+  try {
+    await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/login-notification`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ user_agent: navigator.userAgent }),
+    });
+  } catch {
+    // Silently fail — never block login flow
+  }
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -60,6 +75,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setTimeout(() => logActivity("login", session.user.id, session.user.email ?? null, {
               provider: session.user.app_metadata?.provider ?? "email",
             }), 0);
+            setTimeout(() => sendLoginNotification(session.access_token), 0);
           }
         } else {
           setIsAdmin(false);
