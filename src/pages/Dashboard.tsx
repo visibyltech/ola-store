@@ -73,30 +73,37 @@ const Dashboard = () => {
   const [profileForm, setProfileForm] = useState({ full_name: "", phone: "", address: "" });
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    // Wait for auth to fully resolve before making any navigation decision
+    if (authLoading) return;
+    if (!user) {
       navigate("/login");
       return;
     }
-    if (user) fetchData();
+    fetchData();
   }, [user, authLoading]);
 
   const fetchData = async () => {
-    const [ordersRes, paymentsRes, profileRes] = await Promise.all([
-      supabase.from("orders").select("*").order("created_at", { ascending: false }),
-      supabase.from("payments").select("*").order("created_at", { ascending: false }),
-      supabase.from("profiles").select("full_name, phone, address").eq("user_id", user!.id).single(),
-    ]);
-    if (ordersRes.data) setOrders(ordersRes.data);
-    if (paymentsRes.data) setPayments(paymentsRes.data);
-    if (profileRes.data) {
-      setProfile(profileRes.data);
-      setProfileForm({
-        full_name: profileRes.data.full_name || "",
-        phone: profileRes.data.phone || "",
-        address: profileRes.data.address || "",
-      });
+    try {
+      const [ordersRes, paymentsRes, profileRes] = await Promise.all([
+        supabase.from("orders").select("*").order("created_at", { ascending: false }),
+        supabase.from("payments").select("*").order("created_at", { ascending: false }),
+        supabase.from("profiles").select("full_name, phone, address").eq("user_id", user!.id).maybeSingle(),
+      ]);
+      if (ordersRes.data) setOrders(ordersRes.data);
+      if (paymentsRes.data) setPayments(paymentsRes.data);
+      if (profileRes.data) {
+        setProfile(profileRes.data);
+        setProfileForm({
+          full_name: profileRes.data.full_name || "",
+          phone: profileRes.data.phone || "",
+          address: profileRes.data.address || "",
+        });
+      }
+    } catch {
+      // silently handle errors, still stop the spinner
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleUpdateProfile = async () => {
