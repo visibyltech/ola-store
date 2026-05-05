@@ -165,7 +165,7 @@ const HeroSection = () => {
             </Link>
             <Link to="/easybuy">
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button variant="outline" className="border-primary-foreground/30 text-primary-foreground px-8 py-6 text-base rounded-xl hover:bg-primary-foreground/10">
+                <Button className="bg-white/10 backdrop-blur-sm border border-white/30 text-white px-8 py-6 text-base rounded-xl hover:bg-white/20 transition-all">
                   EasyBuy Plans
                 </Button>
               </motion.div>
