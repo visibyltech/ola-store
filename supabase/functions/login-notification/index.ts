@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           from: "Olas & Bs Electronics <noreply@olasandbselectronics.com.ng>",
           to: [userEmail],
-          subject: "🔐 New Sign-In Detected – Olas & Bs Electronics",
+          subject: "New Sign-In Detected – Olas & Bs Electronics",
           html: `<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f4f4f4">
 <div style="max-width:520px;margin:30px auto;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.08)">
   <div style="background:#1a56db;padding:24px;text-align:center">
@@ -90,34 +90,34 @@ Deno.serve(async (req) => {
     <p style="color:#555">A new sign-in was detected on your account. If this was you, no action is needed.</p>
     <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin:20px 0">
       <div style="background:#1e40af;padding:10px 16px">
-        <p style="color:#fff;margin:0;font-size:13px;font-weight:bold">📍 Sign-In Details</p>
+        <p style="color:#fff;margin:0;font-size:13px;font-weight:bold">Sign-In Details</p>
       </div>
       <table style="width:100%;border-collapse:collapse">
         <tr style="border-bottom:1px solid #e2e8f0">
-          <td style="padding:12px 16px;color:#666;font-size:13px;width:40%">🕐 Time</td>
+          <td style="padding:12px 16px;color:#666;font-size:13px;width:40%">Time</td>
           <td style="padding:12px 16px;font-weight:bold;font-size:13px">${loginTime}</td>
         </tr>
         <tr style="border-bottom:1px solid #e2e8f0;background:#fafafa">
-          <td style="padding:12px 16px;color:#666;font-size:13px">🌍 Location</td>
+          <td style="padding:12px 16px;color:#666;font-size:13px">Location</td>
           <td style="padding:12px 16px;font-weight:bold;font-size:13px">${location}</td>
         </tr>
         <tr style="border-bottom:1px solid #e2e8f0">
-          <td style="padding:12px 16px;color:#666;font-size:13px">📱 Device</td>
+          <td style="padding:12px 16px;color:#666;font-size:13px">Device</td>
           <td style="padding:12px 16px;font-weight:bold;font-size:13px">${device} · ${os}</td>
         </tr>
         <tr style="border-bottom:1px solid #e2e8f0;background:#fafafa">
-          <td style="padding:12px 16px;color:#666;font-size:13px">🌐 Browser</td>
+          <td style="padding:12px 16px;color:#666;font-size:13px">Browser</td>
           <td style="padding:12px 16px;font-weight:bold;font-size:13px">${browser}</td>
         </tr>
         <tr>
-          <td style="padding:12px 16px;color:#666;font-size:13px">🔒 IP Address</td>
+          <td style="padding:12px 16px;color:#666;font-size:13px">IP Address</td>
           <td style="padding:12px 16px;font-weight:bold;font-size:13px;font-family:monospace">${ip}</td>
         </tr>
       </table>
     </div>
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px 16px;margin-top:16px">
       <p style="margin:0;color:#dc2626;font-size:13px">
-        <strong>⚠️ Not you?</strong> If you did not sign in, your account may be compromised.
+        <strong>Not you?</strong> If you did not sign in, your account may be compromised.
         Please <a href="https://www.olasandbselectronics.com.ng/reset-password" style="color:#dc2626;font-weight:bold">reset your password immediately</a>.
       </p>
     </div>
