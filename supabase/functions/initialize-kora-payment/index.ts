@@ -11,16 +11,32 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const koraSecretKey = Deno.env.get("KORA_SECRET_KEY");
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    if (!koraSecretKey) {
+    // Read KoraPay settings from DB (with env var fallback)
+    const { data: gatewaySettings } = await supabase
+      .from("payment_settings")
+      .select("public_key, secret_key, enabled")
+      .eq("gateway", "korapay")
+      .maybeSingle();
+
+    if (gatewaySettings && !gatewaySettings.enabled) {
       return new Response(
-        JSON.stringify({ error: "KORA_SECRET_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "KoraPay payment gateway is currently disabled" }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const koraSecretKey = (gatewaySettings?.secret_key && gatewaySettings.secret_key.length > 10)
+      ? gatewaySettings.secret_key
+      : Deno.env.get("KORA_SECRET_KEY");
+
+    if (!koraSecretKey) {
+      return new Response(
+        JSON.stringify({ error: "KoraPay secret key not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
