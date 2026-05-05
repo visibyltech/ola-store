@@ -75,7 +75,7 @@ const Shop = () => {
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
             {products.map((product, index) => (
               <motion.div
                 key={product.id}
@@ -120,8 +120,7 @@ const Shop = () => {
                         </div>
                         <Button
                           size="icon"
-                          variant="outline"
-                          className="rounded-full border-accent/30 text-accent hover:bg-accent hover:text-accent-foreground"
+                          className="rounded-full bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm flex-shrink-0"
                         >
                           <ShoppingBag className="w-4 h-4" />
                         </Button>
