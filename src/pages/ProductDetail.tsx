@@ -10,14 +10,9 @@ import { Slider } from "@/components/ui/slider";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import korapayLogo from "@/assets/korapay-logo.png";
 
-type Gateway = "paystack" | "flutterwave" | "korapay";
-
-const gatewayOptions: { id: Gateway; name: string; logo: string }[] = [
-  { id: "paystack", name: "Paystack", logo: "💳" },
-  { id: "flutterwave", name: "Flutterwave", logo: "🦋" },
-  { id: "korapay", name: "KoraPay", logo: "🔵" },
-];
+type Gateway = "korapay";
 
 interface ProductData {
   id: string;
@@ -40,7 +35,7 @@ const ProductDetail = () => {
   const [product, setProduct] = useState<ProductData | null>(null);
   const [loading, setLoading] = useState(true);
   const [depositAmount, setDepositAmount] = useState(0);
-  const [selectedGateway, setSelectedGateway] = useState<Gateway>("paystack");
+  const [selectedGateway] = useState<Gateway>("korapay");
   const [loadingPayment, setLoadingPayment] = useState(false);
 
   useEffect(() => {
@@ -219,25 +214,10 @@ const ProductDetail = () => {
                 {formatPrice(product.price)}
               </div>
 
-              {/* Gateway Selection */}
-              <div className="mb-6">
-                <p className="text-sm font-medium text-foreground mb-3">Select Payment Gateway</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {gatewayOptions.map((gw) => (
-                    <button
-                      key={gw.id}
-                      onClick={() => setSelectedGateway(gw.id)}
-                      className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all text-sm font-medium ${
-                        selectedGateway === gw.id
-                          ? "border-accent bg-accent/10 text-accent"
-                          : "border-border bg-card text-muted-foreground hover:border-accent/50"
-                      }`}
-                    >
-                      <span className="text-xl">{gw.logo}</span>
-                      <span className="text-xs">{gw.name}</span>
-                    </button>
-                  ))}
-                </div>
+              {/* Payment secured by KoraPay */}
+              <div className="flex items-center gap-2 mb-5 px-3 py-2 bg-secondary/60 rounded-xl border border-border w-fit">
+                <span className="text-xs text-muted-foreground font-medium">Secured by</span>
+                <img src={korapayLogo} alt="KoraPay" className="h-5 object-contain" />
               </div>
 
               {/* Purchase Options */}
