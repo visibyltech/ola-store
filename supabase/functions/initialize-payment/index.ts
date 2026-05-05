@@ -107,10 +107,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
         payment_gateway: "korapay",
       });
 
+      const koraSecretKey = Deno.env.get("KORAPAY_SECRET_KEY") || Deno.env.get("KORA_SECRET_KEY");
+      if (!koraSecretKey) {
+        return new Response(JSON.stringify({ error: "KoraPay secret key not configured" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const res = await fetch("https://api.korapay.com/merchant/api/v1/charges/initialize", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${Deno.env.get("KORAPAY_SECRET_KEY")}`,
+          Authorization: `Bearer ${koraSecretKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
