@@ -52,6 +52,7 @@ function orderConfirmationEmail(order: any, payment: any) {
 </head><body>
 <div class="container">
   <div class="header">
+    <img src="https://www.olasandbselectronics.com.ng/assets/somisteam-logo-CqBWvMMV.jpg" alt="Olas &amp; Bs Electronics" style="height:56px;width:auto;border-radius:8px;display:block;margin:0 auto 10px" />
     <h1>Olas & Bs <span class="gold">Electronics</span></h1>
     <p style="color:#cbd5e1;margin:4px 0 0">Order Confirmation</p>
   </div>
