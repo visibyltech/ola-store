@@ -140,8 +140,9 @@ const ProductDetail = () => {
       });
 
       if (error) throw error;
-      if (data?.payment_url) {
-        window.location.href = data.payment_url;
+      const checkoutUrl = data?.checkout_url || data?.payment_url;
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl;
       } else {
         throw new Error(data?.error || "No payment URL received");
       }
