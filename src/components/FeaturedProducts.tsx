@@ -1,8 +1,20 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { ArrowRight, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { products, formatPrice } from "@/data/products";
+import { formatPrice } from "@/data/products";
+import { supabase } from "@/integrations/supabase/client";
+
+interface DBProduct {
+  id: string;
+  name: string;
+  brand: string;
+  category: string;
+  price: number;
+  images: string[] | null;
+  available: boolean;
+}
 
 const containerVariants = {
   hidden: {},
@@ -20,6 +32,23 @@ const cardVariants = {
 };
 
 const FeaturedProducts = () => {
+  const [products, setProducts] = useState<DBProduct[]>([]);
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name, brand, category, price, images, available")
+        .eq("available", true)
+        .order("created_at", { ascending: false })
+        .limit(4);
+      if (!error && data) setProducts(data);
+    };
+    fetchProducts();
+  }, []);
+
+  if (products.length === 0) return null;
+
   return (
     <section className="py-20 lg:py-28 bg-background overflow-hidden">
       <div className="container mx-auto px-4 lg:px-8">
@@ -68,7 +97,7 @@ const FeaturedProducts = () => {
                 >
                   <div className="relative aspect-square bg-secondary/50 p-6 overflow-hidden">
                     <motion.img
-                      src={product.image}
+                      src={product.images?.[0] || "/placeholder.svg"}
                       alt={product.name}
                       className="w-full h-full object-contain"
                       whileHover={{ scale: 1.1, rotate: 2 }}
