@@ -37,9 +37,14 @@ const Footer = () => {
           <motion.div variants={itemVariants}>
             <h4 className="font-display font-semibold text-primary-foreground mb-4">Quick Links</h4>
             <div className="flex flex-col gap-2">
-              {["Shop", "EasyBuy", "About", "Contact"].map((link) => (
-                <Link key={link} to={`/${link.toLowerCase()}`} className="text-sm hover:text-accent transition-colors hover:translate-x-1 inline-block transform duration-200">
-                  {link}
+              {[
+                { label: "Shop", path: "/shop" },
+                { label: "Save to Buy", path: "/easybuy" },
+                { label: "About", path: "/about" },
+                { label: "Contact", path: "/contact" },
+              ].map(({ label, path }) => (
+                <Link key={path} to={path} className="text-sm hover:text-accent transition-colors hover:translate-x-1 inline-block transform duration-200">
+                  {label}
                 </Link>
               ))}
             </div>
