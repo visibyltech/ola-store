@@ -115,7 +115,7 @@ const Shop = () => {
                             {formatPrice(product.price)}
                           </p>
                           <p className="text-xs text-accent font-medium">
-                            EasyBuy Available
+                            Save to Buy Available
                           </p>
                         </div>
                         <Button
