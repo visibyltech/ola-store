@@ -254,7 +254,7 @@ const ProductDetail = () => {
                 <div className="bg-card border border-border rounded-2xl p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <CreditCard className="w-5 h-5 text-accent" />
-                    <h3 className="font-display font-semibold text-foreground">EasyBuy Installment</h3>
+                    <h3 className="font-display font-semibold text-foreground">Save to Buy Installment</h3>
                   </div>
 
                   <div className="mb-4">
@@ -282,10 +282,6 @@ const ProductDetail = () => {
                         <span className="text-muted-foreground">Product Price</span>
                         <span className="text-foreground">{formatPrice(product.price)}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Interest ({(installment.interestRate * 100).toFixed(0)}%)</span>
-                        <span className="text-foreground">{formatPrice(installment.interestAmount)}</span>
-                      </div>
                       <div className="flex justify-between text-sm font-semibold border-t border-border pt-2">
                         <span className="text-foreground">Total Payable</span>
                         <span className="text-foreground">{formatPrice(installment.totalPayable)}</span>
@@ -299,12 +295,6 @@ const ProductDetail = () => {
                         <span className="text-destructive">{formatPrice(installment.balance)}</span>
                       </div>
                     </div>
-                  )}
-
-                  {depositAmount / product.price >= 0.5 && (
-                    <p className="text-xs text-accent font-medium mb-3">
-                      ✨ Great! You qualify for the lowest interest rate (10%)
-                    </p>
                   )}
 
                   <Button
