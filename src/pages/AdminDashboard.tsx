@@ -7,7 +7,8 @@ import {
   DollarSign, Calendar, ShoppingBag, AlertCircle, CheckCircle,
   Clock, XCircle, Truck, ArrowUpRight, ArrowDownRight, MoreVertical,
   Bell, Activity, Send, RefreshCw, Shield, LogIn, UserPlus,
-  AlertTriangle, Mail, Phone, MapPin, Settings, Key, ToggleLeft, ToggleRight
+  AlertTriangle, Mail, Phone, MapPin, Settings, Key, ToggleLeft, ToggleRight,
+  Pencil, Tag
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -138,7 +139,7 @@ const activityConfig: Record<string, { label: string; color: string; icon: typeo
 };
 
 const CHART_COLORS = ["hsl(38,92%,50%)", "hsl(222,47%,11%)", "hsl(220,26%,20%)", "hsl(43,96%,56%)", "hsl(33,90%,40%)", "hsl(220,9%,46%)"];
-const categories = ["Televisions", "Refrigerators", "Washing Machines", "Air Conditioners", "Microwaves", "Generators"];
+const DEFAULT_CATEGORIES = ["Televisions", "Refrigerators", "Washing Machines", "Air Conditioners", "Microwaves", "Generators"];
 
 const AdminDashboard = () => {
   const { user, isAdmin, signOut, loading: authLoading } = useAuth();
@@ -160,6 +161,16 @@ const AdminDashboard = () => {
   const [sendingReminder, setSendingReminder] = useState<string | null>(null);
   const [activityFilter, setActivityFilter] = useState<string>("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [dynamicCategories, setDynamicCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [newCategoryInput, setNewCategoryInput] = useState("");
+  const [savingCategories, setSavingCategories] = useState(false);
+
+  const [showEditProduct, setShowEditProduct] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<DBProduct | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", brand: "", category: "", description: "", price: "", min_deposit: "", max_installment_months: "", features: "" });
+  const [editImages, setEditImages] = useState<File[]>([]);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
 
   const [koraSettings, setKoraSettings] = useState<PaymentGatewaySetting>({
     gateway: "korapay", public_key: "", secret_key: "", enabled: true,
@@ -183,7 +194,7 @@ const AdminDashboard = () => {
       navigate("/login");
       return;
     }
-    if (user && isAdmin) fetchData();
+    if (user && isAdmin) { fetchData(); loadCategories(); }
   }, [user, isAdmin, authLoading]);
 
   const fetchData = async () => {
@@ -275,6 +286,80 @@ const AdminDashboard = () => {
     const { error } = await supabase.from("products").delete().eq("id", id);
     if (error) toast.error(error.message);
     else { toast.success("Product deleted"); fetchData(); }
+  };
+
+  const openEditProduct = (product: DBProduct) => {
+    setEditingProduct(product);
+    setEditForm({
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+      description: product.description || "",
+      price: String(product.price),
+      min_deposit: String(product.min_deposit),
+      max_installment_months: String(product.max_installment_months),
+      features: (product.features || []).join(", "),
+    });
+    setEditImages([]);
+    setShowEditProduct(true);
+  };
+
+  const handleUpdateProduct = async () => {
+    if (!editingProduct || !editForm.name || !editForm.price) { toast.error("Name and price are required"); return; }
+    setUploadingImage(true);
+    let imageUrls = editingProduct.images || [];
+    if (editImages.length > 0) {
+      const newUrls = await handleImageUpload(editImages);
+      imageUrls = [...imageUrls, ...newUrls];
+    }
+    const { error } = await supabase.from("products").update({
+      name: editForm.name,
+      brand: editForm.brand,
+      category: editForm.category,
+      description: editForm.description || null,
+      price: Number(editForm.price),
+      min_deposit: Number(editForm.min_deposit) || 0,
+      max_installment_months: Number(editForm.max_installment_months) || 6,
+      features: editForm.features.split(",").map(f => f.trim()).filter(Boolean),
+      images: imageUrls.length > 0 ? imageUrls : null,
+    }).eq("id", editingProduct.id);
+    setUploadingImage(false);
+    if (error) { toast.error(error.message); }
+    else {
+      toast.success("Product updated!");
+      setShowEditProduct(false);
+      setEditingProduct(null);
+      fetchData();
+    }
+  };
+
+  const loadCategories = async () => {
+    const { data } = await supabase.from("site_settings").select("value").eq("key", "product_categories").maybeSingle();
+    if (data?.value) {
+      try {
+        const cats = JSON.parse(data.value as string);
+        if (Array.isArray(cats) && cats.length > 0) setDynamicCategories(cats);
+      } catch {}
+    }
+  };
+
+  const handleAddCategory = async () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed || dynamicCategories.includes(trimmed)) return;
+    const updated = [...dynamicCategories, trimmed];
+    setSavingCategories(true);
+    await supabase.from("site_settings").upsert({ key: "product_categories", value: JSON.stringify(updated), updated_at: new Date().toISOString() }, { onConflict: "key" });
+    setDynamicCategories(updated);
+    setNewCategoryInput("");
+    setSavingCategories(false);
+    toast.success("Category added");
+  };
+
+  const handleRemoveCategory = async (cat: string) => {
+    const updated = dynamicCategories.filter(c => c !== cat);
+    await supabase.from("site_settings").upsert({ key: "product_categories", value: JSON.stringify(updated), updated_at: new Date().toISOString() }, { onConflict: "key" });
+    setDynamicCategories(updated);
+    toast.success("Category removed");
   };
 
   const handleUpdateOrderStatus = async (orderId: string, status: string) => {
@@ -659,7 +744,7 @@ const AdminDashboard = () => {
                           <Select value={newProduct.category} onValueChange={v => setNewProduct({ ...newProduct, category: v })}>
                             <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                              {dynamicCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </div>
@@ -739,6 +824,9 @@ const AdminDashboard = () => {
                       <Badge variant="outline" className={product.available ? "text-green-600 border-green-200 bg-green-50 text-[10px]" : "text-red-600 border-red-200 bg-red-50 text-[10px]"}>
                         {product.available ? "Active" : "Inactive"}
                       </Badge>
+                      <Button size="icon" variant="ghost" onClick={() => openEditProduct(product)} className="text-accent w-7 h-7">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
                       <Button size="icon" variant="ghost" onClick={() => handleDeleteProduct(product.id)} className="text-destructive w-7 h-7">
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -751,6 +839,81 @@ const AdminDashboard = () => {
                   </div>
                 )}
               </div>
+
+              {/* Edit Product Dialog */}
+              <Dialog open={showEditProduct} onOpenChange={setShowEditProduct}>
+                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle className="font-display">Edit Product</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    <div>
+                      <label className="text-sm font-medium text-foreground mb-1 block">Product Name</label>
+                      <Input value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="rounded-xl" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-foreground mb-1 block">Brand</label>
+                        <Input value={editForm.brand} onChange={e => setEditForm({ ...editForm, brand: e.target.value })} className="rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-foreground mb-1 block">Category</label>
+                        <Select value={editForm.category} onValueChange={v => setEditForm({ ...editForm, category: v })}>
+                          <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {dynamicCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-foreground mb-1 block">Description</label>
+                      <Textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} className="rounded-xl" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-foreground mb-1 block">Price (₦)</label>
+                        <Input type="number" value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} className="rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-foreground mb-1 block">Min Deposit (₦)</label>
+                        <Input type="number" value={editForm.min_deposit} onChange={e => setEditForm({ ...editForm, min_deposit: e.target.value })} className="rounded-xl" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-foreground mb-1 block">Max Installment Months</label>
+                      <Input type="number" value={editForm.max_installment_months} onChange={e => setEditForm({ ...editForm, max_installment_months: e.target.value })} className="rounded-xl" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-foreground mb-1 block">Features (comma-separated)</label>
+                      <Input value={editForm.features} onChange={e => setEditForm({ ...editForm, features: e.target.value })} placeholder="4K, Smart TV, HDR" className="rounded-xl" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-foreground mb-1 block">Add More Images</label>
+                      {editingProduct?.images && editingProduct.images.length > 0 && (
+                        <div className="flex gap-2 mb-3 flex-wrap">
+                          {editingProduct.images.map((url, i) => (
+                            <div key={i} className="w-14 h-14 rounded-lg overflow-hidden border border-border">
+                              <img src={url} alt="" className="w-full h-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div onClick={() => editFileInputRef.current?.click()} className="border-2 border-dashed border-border rounded-xl p-4 text-center cursor-pointer hover:border-accent transition-colors">
+                        <Upload className="w-5 h-5 text-muted-foreground mx-auto mb-1" />
+                        <p className="text-xs text-muted-foreground">Click to add images</p>
+                      </div>
+                      <input ref={editFileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => setEditImages(Array.from(e.target.files || []))} />
+                      {editImages.length > 0 && (
+                        <p className="text-xs text-accent mt-2">{editImages.length} new image(s) selected</p>
+                      )}
+                    </div>
+                    <Button onClick={handleUpdateProduct} disabled={uploadingImage} className="w-full bg-gradient-gold text-accent-foreground rounded-xl shadow-gold">
+                      {uploadingImage ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </motion.div>
           )}
 
@@ -1231,6 +1394,43 @@ const AdminDashboard = () => {
               <div className="mb-6">
                 <h2 className="text-xl font-display font-bold text-foreground">Settings</h2>
                 <p className="text-sm text-muted-foreground mt-1">Manage payment gateways and store configuration</p>
+              </div>
+
+              {/* Product Categories Card */}
+              <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden mb-6">
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-border/50 bg-secondary/20">
+                  <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
+                    <Tag className="w-5 h-5 text-accent" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Product Categories</p>
+                    <p className="text-[11px] text-muted-foreground">Manage categories shown in the Add/Edit Product form</p>
+                  </div>
+                </div>
+                <div className="p-5 space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCategoryInput}
+                      onChange={e => setNewCategoryInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && handleAddCategory()}
+                      placeholder="e.g. Laptops, Speakers..."
+                      className="rounded-xl flex-1"
+                    />
+                    <Button onClick={handleAddCategory} disabled={savingCategories || !newCategoryInput.trim()} className="bg-gradient-gold text-accent-foreground rounded-xl shadow-gold flex-shrink-0">
+                      <Plus className="w-4 h-4 mr-1" /> Add
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {dynamicCategories.map(cat => (
+                      <span key={cat} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-full text-xs font-medium text-foreground">
+                        {cat}
+                        <button onClick={() => handleRemoveCategory(cat)} className="w-4 h-4 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive transition-colors">
+                          <XCircle className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* KoraPay Gateway Card */}
