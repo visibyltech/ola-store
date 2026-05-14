@@ -146,7 +146,7 @@ const HeroSection = () => {
             className="text-lg md:text-xl text-primary-foreground/70 mb-8 max-w-lg"
           >
             Discover premium electronics from Hisense, Samsung, LG and more.
-            Buy outright or use our flexible EasyBuy installment plan.
+            Buy outright or use our flexible Save to Buy installment plan.
           </motion.p>
 
           <motion.div
@@ -166,7 +166,7 @@ const HeroSection = () => {
             <Link to="/easybuy">
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button className="bg-white/10 backdrop-blur-sm border border-white/30 text-white px-8 py-6 text-base rounded-xl hover:bg-white/20 transition-all">
-                  EasyBuy Plans
+                  Save to Buy Plans
                 </Button>
               </motion.div>
             </Link>
