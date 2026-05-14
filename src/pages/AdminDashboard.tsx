@@ -8,7 +8,7 @@ import {
   Clock, XCircle, Truck, ArrowUpRight, ArrowDownRight, MoreVertical,
   Bell, Activity, Send, RefreshCw, Shield, LogIn, UserPlus,
   AlertTriangle, Mail, Phone, MapPin, Settings, Key, ToggleLeft, ToggleRight,
-  Pencil, Tag
+  Pencil, Tag, History, ChevronRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -171,6 +171,8 @@ const AdminDashboard = () => {
   const [editForm, setEditForm] = useState({ name: "", brand: "", category: "", description: "", price: "", min_deposit: "", max_installment_months: "", features: "" });
   const [editImages, setEditImages] = useState<File[]>([]);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [selectedCustomer, setSelectedCustomer] = useState<DBProfile | null>(null);
 
   const [koraSettings, setKoraSettings] = useState<PaymentGatewaySetting>({
     gateway: "korapay", public_key: "", secret_key: "", enabled: true,
@@ -1081,7 +1083,8 @@ const AdminDashboard = () => {
                   );
                   return (
                     <motion.div key={customer.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
-                      className="bg-card rounded-xl p-4 shadow-sm border border-border/50">
+                      onClick={() => setSelectedCustomer(customer)}
+                      className="bg-card rounded-xl p-4 shadow-sm border border-border/50 cursor-pointer hover:border-accent/40 hover:shadow-md transition-all">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
                           <span className="text-sm font-bold text-accent">{(customer.full_name || "?")[0].toUpperCase()}</span>
@@ -1096,9 +1099,12 @@ const AdminDashboard = () => {
                             <span className="text-[10px] text-muted-foreground">Joined {new Date(customer.created_at).toLocaleDateString()}</span>
                           </div>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-xs font-bold text-foreground">{formatPrice(totalSpent)}</p>
-                          <p className="text-[10px] text-muted-foreground">{customerOrders.length} orders</p>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="text-right">
+                            <p className="text-xs font-bold text-foreground">{formatPrice(totalSpent)}</p>
+                            <p className="text-[10px] text-muted-foreground">{customerOrders.length} orders</p>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
                         </div>
                       </div>
                       {customer.address && (
@@ -1115,6 +1121,166 @@ const AdminDashboard = () => {
                   </div>
                 )}
               </div>
+
+              {/* Customer History Dialog */}
+              <Dialog open={!!selectedCustomer} onOpenChange={open => { if (!open) setSelectedCustomer(null); }}>
+                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                  {selectedCustomer && (() => {
+                    const cOrders = orders.filter(o => o.user_id === selectedCustomer.user_id);
+                    const cPayments = payments.filter(p => cOrders.some(o => o.id === p.order_id));
+                    const totalSpent = cOrders.reduce((s, o) => s + o.total_paid, 0);
+                    const totalBalance = cOrders.reduce((s, o) => s + o.remaining_balance, 0);
+                    const hasOverdue = cOrders.some(o =>
+                      o.next_payment_due && new Date(o.next_payment_due) < new Date() && o.remaining_balance > 0
+                    );
+                    return (
+                      <>
+                        <DialogHeader>
+                          <DialogTitle className="font-display flex items-center gap-2">
+                            <History className="w-5 h-5 text-accent" />
+                            Order History
+                          </DialogTitle>
+                        </DialogHeader>
+
+                        {/* Customer profile */}
+                        <div className="bg-secondary/50 rounded-xl p-4 flex items-center gap-3 mt-2">
+                          <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                            <span className="text-base font-bold text-accent">{(selectedCustomer.full_name || "?")[0].toUpperCase()}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-sm font-semibold text-foreground">{selectedCustomer.full_name || "Unknown"}</h3>
+                              {hasOverdue && <Badge variant="outline" className="text-[9px] bg-red-50 text-red-600 border-red-200">Overdue</Badge>}
+                            </div>
+                            {selectedCustomer.phone && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3 h-3" />{selectedCustomer.phone}
+                              </p>
+                            )}
+                            {selectedCustomer.address && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3" />{selectedCustomer.address}
+                              </p>
+                            )}
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              Joined {new Date(selectedCustomer.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Summary stats */}
+                        <div className="grid grid-cols-3 gap-2 mt-3">
+                          <div className="bg-card border border-border rounded-xl p-3 text-center">
+                            <p className="text-[10px] text-muted-foreground">Total Paid</p>
+                            <p className="text-xs font-bold text-green-600">{formatPrice(totalSpent)}</p>
+                          </div>
+                          <div className="bg-card border border-border rounded-xl p-3 text-center">
+                            <p className="text-[10px] text-muted-foreground">Balance Due</p>
+                            <p className="text-xs font-bold text-orange-600">{formatPrice(totalBalance)}</p>
+                          </div>
+                          <div className="bg-card border border-border rounded-xl p-3 text-center">
+                            <p className="text-[10px] text-muted-foreground">Orders</p>
+                            <p className="text-xs font-bold text-foreground">{cOrders.length}</p>
+                          </div>
+                        </div>
+
+                        {/* Orders list */}
+                        <div className="mt-4 space-y-3">
+                          <h4 className="text-xs font-semibold text-foreground uppercase tracking-wide">Orders</h4>
+                          {cOrders.length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-6">No orders yet</p>
+                          )}
+                          {cOrders.map(order => {
+                            const orderPayments = cPayments.filter(p => p.order_id === order.id);
+                            const StatusIcon = statusIcons[order.status] || Clock;
+                            const isOverdue = order.next_payment_due && new Date(order.next_payment_due) < new Date() && order.remaining_balance > 0;
+                            return (
+                              <div key={order.id} className={`bg-card border rounded-xl overflow-hidden ${isOverdue ? "border-red-200" : "border-border/50"}`}>
+                                {/* Order header */}
+                                <div className="flex items-center gap-2 p-3 bg-secondary/30">
+                                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${statusColors[order.status] || "bg-muted"}`}>
+                                    <StatusIcon className="w-3.5 h-3.5" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-foreground truncate">{order.product_name}</p>
+                                    <p className="text-[10px] text-muted-foreground">{new Date(order.created_at).toLocaleDateString()} · {order.payment_type.replace(/_/g, " ")}</p>
+                                  </div>
+                                  <Badge variant="outline" className={`text-[9px] flex-shrink-0 ${statusColors[order.status]}`}>
+                                    {order.status.replace(/_/g, " ")}
+                                  </Badge>
+                                </div>
+
+                                {/* Order financials */}
+                                <div className="grid grid-cols-3 gap-2 p-3">
+                                  <div>
+                                    <p className="text-[9px] text-muted-foreground">Total</p>
+                                    <p className="text-[11px] font-bold text-foreground">{formatPrice(order.total_payable)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] text-muted-foreground">Paid</p>
+                                    <p className="text-[11px] font-bold text-green-600">{formatPrice(order.total_paid)}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] text-muted-foreground">Balance</p>
+                                    <p className={`text-[11px] font-bold ${order.remaining_balance > 0 ? "text-orange-600" : "text-green-600"}`}>{formatPrice(order.remaining_balance)}</p>
+                                  </div>
+                                </div>
+
+                                {/* Progress bar */}
+                                <div className="px-3 pb-2">
+                                  <div className="w-full bg-secondary rounded-full h-1">
+                                    <div className="bg-accent rounded-full h-1 transition-all"
+                                      style={{ width: `${order.total_payable > 0 ? Math.min((order.total_paid / order.total_payable) * 100, 100) : 0}%` }} />
+                                  </div>
+                                </div>
+
+                                {order.next_payment_due && order.remaining_balance > 0 && (
+                                  <p className={`text-[10px] px-3 pb-2 ${isOverdue ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                                    {isOverdue ? "⚠ Overdue since" : "Next due:"} {new Date(order.next_payment_due).toLocaleDateString()}
+                                  </p>
+                                )}
+
+                                {/* Payment entries for this order */}
+                                {orderPayments.length > 0 && (
+                                  <div className="border-t border-border/50 p-3">
+                                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Payments ({orderPayments.length})</p>
+                                    <div className="space-y-1.5">
+                                      {orderPayments.map(pmt => (
+                                        <div key={pmt.id} className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                                              pmt.status === "success" ? "bg-green-100" : pmt.status === "pending" ? "bg-yellow-100" : "bg-red-100"
+                                            }`}>
+                                              {pmt.status === "success"
+                                                ? <CheckCircle className="w-3 h-3 text-green-600" />
+                                                : pmt.status === "pending"
+                                                ? <Clock className="w-3 h-3 text-yellow-600" />
+                                                : <XCircle className="w-3 h-3 text-red-600" />}
+                                            </div>
+                                            <div>
+                                              <p className="text-[10px] font-medium text-foreground">{formatPrice(pmt.amount)}</p>
+                                              <p className="text-[9px] text-muted-foreground">{new Date(pmt.created_at).toLocaleDateString()} · {pmt.payment_gateway || "—"}</p>
+                                            </div>
+                                          </div>
+                                          <Badge variant="outline" className={`text-[9px] ${
+                                            pmt.status === "success" ? "text-green-600 border-green-200 bg-green-50" :
+                                            pmt.status === "pending" ? "text-yellow-600 border-yellow-200 bg-yellow-50" :
+                                            "text-red-600 border-red-200 bg-red-50"
+                                          }`}>{pmt.status}</Badge>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </DialogContent>
+              </Dialog>
             </motion.div>
           )}
 
