@@ -124,7 +124,7 @@ const FeaturedProducts = () => {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-lg font-bold text-foreground">{formatPrice(product.price)}</p>
-                        <p className="text-xs text-accent font-medium">EasyBuy Available</p>
+                        <p className="text-xs text-accent font-medium">Save to Buy Available</p>
                       </div>
                       <motion.div whileHover={{ scale: 1.2, rotate: 15 }} whileTap={{ scale: 0.9 }}>
                         <Button size="icon" className="rounded-full bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm flex-shrink-0">
