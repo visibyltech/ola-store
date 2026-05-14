@@ -26,7 +26,7 @@ const EasyBuyBanner = () => {
 
   const features = [
     { icon: CreditCard, title: "Flexible Deposit", desc: "Start with as low as 20% deposit" },
-    { icon: Calculator, title: "Low Interest", desc: "Only 10% interest on 50%+ deposits" },
+    { icon: Calculator, title: "No Interest", desc: "Pay only the product price, nothing extra" },
     { icon: Clock, title: "Up to 9 Months", desc: "Spread payments at your own pace" },
   ];
 
@@ -57,7 +57,7 @@ const EasyBuyBanner = () => {
             transition={{ duration: 0.6 }}
             className="inline-block px-4 py-1.5 rounded-full bg-accent/20 text-gold-light text-sm font-medium mb-6 border border-gold/20"
           >
-            EasyBuy Installment Plan
+            Save to Buy Installment Plan
           </motion.span>
           <motion.h2
             initial={{ opacity: 0, y: 40 }}
@@ -83,7 +83,7 @@ const EasyBuyBanner = () => {
             className="text-primary-foreground/60 text-lg"
           >
             Get your dream appliance today. Pay a deposit and spread the balance
-            over months with our affordable EasyBuy plan.
+            over months with our affordable Save to Buy plan.
           </motion.p>
         </div>
 
@@ -124,7 +124,7 @@ const EasyBuyBanner = () => {
           <Link to="/easybuy">
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="inline-block">
               <Button className="bg-gradient-gold text-accent-foreground font-semibold px-8 py-6 text-base rounded-xl hover:opacity-90 shadow-gold">
-                Learn More About EasyBuy <ArrowRight className="ml-2 w-5 h-5" />
+                Learn More About Save to Buy <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             </motion.div>
           </Link>
