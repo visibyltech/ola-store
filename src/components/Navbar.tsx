@@ -10,7 +10,7 @@ import somisteamLogo from "@/assets/somisteam-logo.jpg";
 const navLinks = [
   { label: "Home", path: "/" },
   { label: "Shop", path: "/shop" },
-  { label: "EasyBuy", path: "/easybuy" },
+  { label: "Save to Buy", path: "/easybuy" },
   { label: "About", path: "/about" },
   { label: "Contact", path: "/contact" },
 ];
