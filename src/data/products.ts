@@ -95,9 +95,8 @@ export const formatPrice = (amount: number) => {
 };
 
 export const calculateInstallment = (price: number, deposit: number) => {
-  const depositPercentage = deposit / price;
-  const interestRate = depositPercentage >= 0.5 ? 0.1 : 0.3;
-  const totalPayable = price + price * interestRate;
+  const interestRate = 0;
+  const totalPayable = price;
   const balance = totalPayable - deposit;
-  return { totalPayable, balance, interestRate, interestAmount: price * interestRate };
+  return { totalPayable, balance, interestRate, interestAmount: 0 };
 };
